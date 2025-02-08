@@ -14,7 +14,7 @@ import (
 
 const (
 	uploadDir     = "./uploads"
-	maxUploadSize = 100 * 1024 * 1024 // 50MB
+	maxUploadSize = 100 * 1024 * 1024 // 100MB
 )
 
 func main() {
