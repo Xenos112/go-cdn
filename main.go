@@ -18,7 +18,6 @@ const (
 )
 
 func main() {
-	// Create upload directory if it doesn't exist
 	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
 		log.Fatal(err)
 	}
@@ -43,7 +42,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get file from form data
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "Invalid file", http.StatusBadRequest)
@@ -51,12 +49,10 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Generate unique filename
 	fileExt := filepath.Ext(header.Filename)
 	newFileName := uuid.New().String() + fileExt
 	filePath := filepath.Join(uploadDir, newFileName)
 
-	// Create new file
 	dst, err := os.Create(filePath)
 	if err != nil {
 		http.Error(w, "Failed to create file", http.StatusInternalServerError)
@@ -64,13 +60,11 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dst.Close()
 
-	// Copy file content
 	if _, err := io.Copy(dst, file); err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
 		return
 	}
 
-	// Return file URL
 	fmt.Fprintf(w, "http://%s/files/%s", r.Host, newFileName)
 }
 
@@ -80,21 +74,18 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get file ID from URL
 	fileID := strings.TrimPrefix(r.URL.Path, "/files/")
 	if fileID == "" {
 		http.Error(w, "Invalid file ID", http.StatusBadRequest)
 		return
 	}
 
-	// Verify file exists
 	filePath := filepath.Join(uploadDir, fileID)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
-	// Set proper Content-Type based on file extension
 	ext := filepath.Ext(filePath)
 	switch ext {
 	case ".jpg", ".jpeg":
@@ -111,6 +102,5 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
 
-	// Serve file
 	http.ServeFile(w, r, filePath)
 }
