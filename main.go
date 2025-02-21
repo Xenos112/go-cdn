@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,25 +20,32 @@ const (
 	maxUploadSize = 100 * 1024 * 1024 // 100MB
 )
 
+type UploadResult struct {
+	FileName string `json:"fileName"`
+	URL      string `json:"url"`
+	Error    string `json:"error,omitempty"`
+}
+
 func main() {
 	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
 		log.Fatal(err)
 	}
 
-	http.HandleFunc("/upload", uploadHandler)
+	http.HandleFunc("/upload", singleUploadHandler)
+	http.HandleFunc("/uploads", multipleUploadHandler)
 	http.HandleFunc("/files/", downloadHandler)
 
 	log.Println("Server started on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func uploadHandler(w http.ResponseWriter, r *http.Request) {
+// Single file upload handler
+func singleUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Limit upload size
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		http.Error(w, "File too large", http.StatusBadRequest)
@@ -49,25 +59,78 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	result := processFileUpload(header, r.Host)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// Multiple file upload handler
+func multipleUploadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		http.Error(w, "Files too large or invalid form", http.StatusBadRequest)
+		return
+	}
+
+	files := r.MultipartForm.File["files"]
+	results := make([]UploadResult, 0, len(files))
+
+	for _, header := range files {
+		file, err := header.Open()
+		if err != nil {
+			results = append(results, UploadResult{
+				FileName: header.Filename,
+				Error:    "Failed to open file",
+			})
+			continue
+		}
+
+		result := processFileUpload(header, r.Host)
+		results = append(results, result)
+		file.Close()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+// Common file processing logic
+func processFileUpload(header *multipart.FileHeader, host string) UploadResult {
+	result := UploadResult{FileName: header.Filename}
+
+	file, err := header.Open()
+	if err != nil {
+		result.Error = "Failed to open file"
+		return result
+	}
+	defer file.Close()
+
 	fileExt := filepath.Ext(header.Filename)
 	newFileName := uuid.New().String() + fileExt
 	filePath := filepath.Join(uploadDir, newFileName)
 
 	dst, err := os.Create(filePath)
 	if err != nil {
-		http.Error(w, "Failed to create file", http.StatusInternalServerError)
-		return
+		result.Error = "Failed to create file"
+		return result
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, file); err != nil {
-		http.Error(w, "Failed to save file", http.StatusInternalServerError)
-		return
+		result.Error = "Failed to save file"
+		return result
 	}
 
-	fmt.Fprintf(w, "http://%s/files/%s", r.Host, newFileName)
+	result.URL = fmt.Sprintf("http://%s/files/%s", host, newFileName)
+	return result
 }
 
+// File download handler
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -86,19 +149,11 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set content type based on file extension
 	ext := filepath.Ext(filePath)
-	switch ext {
-	case ".jpg", ".jpeg":
-		w.Header().Set("Content-Type", "image/jpeg")
-	case ".png":
-		w.Header().Set("Content-Type", "image/png")
-	case ".gif":
-		w.Header().Set("Content-Type", "image/gif")
-	case ".mp4":
-		w.Header().Set("Content-Type", "video/mp4")
-	case ".mov":
-		w.Header().Set("Content-Type", "video/quicktime")
-	default:
+	if mimeType := mime.TypeByExtension(ext); mimeType != "" {
+		w.Header().Set("Content-Type", mimeType)
+	} else {
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
 
