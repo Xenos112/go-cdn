@@ -39,8 +39,21 @@ func main() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
+// Enable CORS and handle OPTIONS requests
+func enableCORS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
 // Single file upload handler
 func singleUploadHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -66,6 +79,12 @@ func singleUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // Multiple file upload handler
 func multipleUploadHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -132,6 +151,12 @@ func processFileUpload(header *multipart.FileHeader, host string) UploadResult {
 
 // File download handler
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w, r)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -159,3 +184,4 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.ServeFile(w, r, filePath)
 }
+
