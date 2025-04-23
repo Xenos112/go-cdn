@@ -24,6 +24,6 @@ func main() {
 	http.HandleFunc("/uploads", handlers.MultipleUploadHandler)
 	http.HandleFunc("/files/", handlers.DownloadHandler)
 
-	fmt.Print("Server started on :8080")
+	fmt.Print("Server started on:\t http://localhost:8080\n")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
